@@ -176,7 +176,7 @@ exports.collection = function (name, opts) {
     opts.fields = _.map(opts.fields, function (field) {
       // Smart field
       field.isVirtual = true;
-      field.isSearchable = false;
+      field.isSearchable = !!field.search;
       field.isReadOnly = true;
 
       return field;
