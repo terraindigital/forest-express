@@ -12,22 +12,19 @@ function IntercomChecker(opts) {
   }
 
   function isIntercomProperlyIntegrated() {
-    return opts.integrations.intercom.apiKey &&
-      opts.integrations.intercom.appId && opts.integrations.intercom.intercom &&
-      opts.integrations.intercom.mapping;
+    return opts.integrations.intercom.accessToken &&
+      opts.integrations.intercom.intercom && opts.integrations.intercom.mapping;
   }
 
   function isIntercomIntegrationDeprecated() {
     var integrationValid = opts.integrations.intercom.apiKey &&
       opts.integrations.intercom.appId &&
       opts.integrations.intercom.intercom &&
-      opts.integrations.intercom.userCollection;
+      opts.integrations.intercom.mapping;
 
     if (integrationValid) {
-      logger.warn('Intercom integration attribute "userCollection" is now ' +
-        'deprecated, please use "mapping" attribute.');
-      opts.integrations.intercom.mapping =
-        opts.integrations.intercom.userCollection;
+      logger.warn('Intercom integration attributes "apiKey" and "appId" are ' +
+        'now deprecated, please use "accessToken" attribute.');
     }
 
     return integrationValid;
@@ -55,10 +52,14 @@ function IntercomChecker(opts) {
   }
 
   if (hasIntercomIntegration()) {
-    if (isIntercomProperlyIntegrated() ||
-    isIntercomIntegrationDeprecated()) {
+    if (isIntercomProperlyIntegrated() || isIntercomIntegrationDeprecated()) {
       opts.integrations.intercom.mapping =
       castToArray(opts.integrations.intercom.mapping);
+
+      opts.integrations.intercom.credentials = {
+        token: opts.integrations.intercom.accessToken
+      };
+
       integrationValid = true;
     } else {
       logger.error('Cannot setup properly your Intercom integration.');
