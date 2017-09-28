@@ -21,6 +21,75 @@ var Integrator = require('./integrations');
 var errorHandler = require('./services/error-handler');
 var codeSyntaxInspector = require('./utils/code-syntax-inspector');
 
+class ProcessCollections {
+  constructor() {
+    this.collections = [];
+
+    this.collection = this.collection.bind(this);
+  }
+
+  collection(name, opts) {
+    this.collections.push([name, opts]);
+  }
+
+  process() {
+    this.collections.forEach(([name, opts]) => this._addCollectionValues(name, opts));
+  }
+
+  _addCollectionValues(name, opts) {
+    if (_.isEmpty(Schemas.schemas) && opts.modelsDir) {
+      logger.error('Cannot customize your collection named "' + name +
+        '" properly. Did you call the "collection" method in the /forest ' +
+        'directory?');
+      return;
+    }
+
+    var collection = _.find(Schemas.schemas, { name: name });
+
+    // NOTICE: Action ids are defined concatenating the collection name and the
+    //         action name to prevent action id conflicts between collections.
+    _.each(opts.actions, function (action) {
+      action.id = name + '.' + action.name;
+    });
+
+    _.each(opts.segments, function (segment) {
+      segment.id = name + '.' + segment.name;
+    });
+
+    if (collection) {
+      if (!Schemas.schemas[name].actions) { Schemas.schemas[name].actions = []; }
+      if (!Schemas.schemas[name].segments) { Schemas.schemas[name].segments = []; }
+
+      Schemas.schemas[name].actions = _.union(opts.actions, Schemas.schemas[name].actions);
+      Schemas.schemas[name].segments = _.union(opts.segments, Schemas.schemas[name].segments);
+
+      opts.fields = _.map(opts.fields, function (field) {
+        // NOTICE: Smart Field definition case
+        field.isVirtual = true;
+        field.isSearchable = false;
+        field.isReadOnly = !field.set;
+
+        return field;
+      });
+
+      Schemas.schemas[name].fields = _.concat(opts.fields,
+        Schemas.schemas[name].fields);
+
+      if (opts.searchFields) {
+        Schemas.schemas[name].searchFields = opts.searchFields;
+      }
+    } else {
+      // NOTICE: Smart Collection definition case
+      opts.name = name;
+      opts.isVirtual = true;
+      opts.isSearchable = !!opts.isSearchable;
+      Schemas.schemas[name] = opts;
+    }
+  }
+}
+
+const processCollections = new ProcessCollections();
+
 function requireAllModels(Implementation, modelsDir, displayMessage) {
   if (modelsDir) {
     return readdirAsync(modelsDir)
@@ -141,6 +210,7 @@ exports.init = function (Implementation) {
     .then(function (models) {
       return Schemas.perform(Implementation, integrator, models, opts)
         .then(function () {
+          processCollections.process();
           var directorySmartImplementation;
 
           if (opts.configDir) {
@@ -289,51 +359,7 @@ exports.init = function (Implementation) {
   return app;
 };
 
-exports.collection = function (name, opts) {
-  if (_.isEmpty(Schemas.schemas) && opts.modelsDir) {
-    logger.error('Cannot customize your collection named "' + name +
-      '" properly. Did you call the "collection" method in the /forest ' +
-      'directory?');
-    return;
-  }
-
-  var collection = _.find(Schemas.schemas, { name: name });
-
-  // NOTICE: Action ids are defined concatenating the collection name and the
-  //         action name to prevent action id conflicts between collections.
-  _.each(opts.actions, function (action) {
-    action.id = name + '.' + action.name;
-  });
-
-  _.each(opts.segments, function (segment) {
-    segment.id = name + '.' + segment.name;
-  });
-
-  if (collection) {
-    if (!Schemas.schemas[name].actions) { Schemas.schemas[name].actions = []; }
-    if (!Schemas.schemas[name].segments) { Schemas.schemas[name].segments = []; }
-
-    Schemas.schemas[name].actions = _.union(opts.actions, Schemas.schemas[name].actions);
-    Schemas.schemas[name].segments = _.union(opts.segments, Schemas.schemas[name].segments);
-
-    // NOTICE: Smart Field definition case
-    opts.fields = getFields(opts);
-    Schemas.schemas[name].fields = _.concat(opts.fields,
-      Schemas.schemas[name].fields);
-
-    if (opts.searchFields) {
-      Schemas.schemas[name].searchFields = opts.searchFields;
-    }
-  } else {
-    // NOTICE: Smart Collection definition case
-    opts.name = name;
-    opts.isVirtual = true;
-    opts.isSearchable = !!opts.isSearchable;
-    opts.fields = getFields(opts);
-    Schemas.schemas[name] = opts;
-  }
-};
-
+exports.collection = processCollections.collection;
 exports.logger = require('./services/logger');
 exports.ensureAuthenticated = require('./services/auth').ensureAuthenticated;
 exports.StatSerializer = require('./serializers/stat');
